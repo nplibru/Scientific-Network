@@ -1,0 +1,1314 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Scientific Network</title>
+<link rel="stylesheet" href="sn-style.css">
+</head>
+<body>
+
+<h1>Scientific Network</h1>
+<p>Сетевое собрание для интеллектуалов.</p>
+
+<hr>
+
+<nav id="top-nav"></nav>
+
+<hr>
+
+<main id="main">
+  <div id="page-home"></div>
+  <div id="page-feed" hidden></div>
+  <div id="page-feed-sub" hidden></div>
+  <div id="page-sections" hidden></div>
+  <div id="page-section" hidden></div>
+  <div id="page-profiles" hidden></div>
+  <div id="page-gallery" hidden></div>
+  <div id="page-publish" hidden></div>
+  <div id="page-profile" hidden></div>
+  <div id="page-settings" hidden></div>
+  <div id="page-notifications" hidden></div>
+  <div id="page-messages" hidden></div>
+  <div id="page-conversation" hidden></div>
+</main>
+
+<hr>
+
+<footer>
+<p>Scientific Network, 2026. Все тексты принадлежат их авторам.</p>
+</footer>
+
+<script>
+'use strict';
+
+/* =========================================================
+   РАЗДЕЛЫ (20)
+   ========================================================= */
+var SECTIONS = {
+  literature:   { name: 'Литература',      desc: 'Художественная словесность' },
+  poetry:       { name: 'Поэзия',          desc: 'Стихосложение' },
+  prose:        { name: 'Проза',           desc: 'Рассказы, повести, очерки' },
+  samizdat:     { name: 'Самиздат',        desc: 'Публикации без редактуры' },
+  essay:        { name: 'Эссе и критика',  desc: 'Разбор и рефлексия' },
+  philosophy:   { name: 'Философия',       desc: 'Умозрение и мысль' },
+  mathematics:  { name: 'Математика',      desc: 'Числа и доказательства' },
+  physics:      { name: 'Физика',          desc: 'Законы природы' },
+  chemistry:    { name: 'Химия',           desc: 'Вещества и превращения' },
+  biology:      { name: 'Биология',        desc: 'Живое и его формы' },
+  astronomy:    { name: 'Астрономия',      desc: 'Небо и космос' },
+  geography:    { name: 'География',       desc: 'Земли и страны' },
+  history:      { name: 'История',         desc: 'Прошлое' },
+  linguistics:  { name: 'Языкознание',     desc: 'Языки и речь' },
+  art:          { name: 'Искусство',       desc: 'Живопись и пластика' },
+  music:        { name: 'Музыка',          desc: 'Звук и гармония' },
+  architecture: { name: 'Архитектура',     desc: 'Зодчество' },
+  medicine:     { name: 'Медицина',        desc: 'Врачевание' },
+  law:          { name: 'Право',           desc: 'Закон' },
+  economics:    { name: 'Экономика',       desc: 'Хозяйство' }
+};
+
+/* =========================================================
+   ХРАНИЛИЩЕ
+   ========================================================= */
+var K_USERS   = 'sn_users_v4';
+var K_POSTS   = 'sn_posts_v4';
+var K_SESSION = 'sn_session_v4';
+var K_NOTIFS  = 'sn_notifs_v4';
+var K_MSGS    = 'sn_msgs_v4';
+
+function getUsers() {
+  try { return JSON.parse(localStorage.getItem(K_USERS) || '[]'); }
+  catch (e) { return []; }
+}
+function saveUsers(l) { localStorage.setItem(K_USERS, JSON.stringify(l)); }
+
+function getPosts() {
+  try { return JSON.parse(localStorage.getItem(K_POSTS) || '[]'); }
+  catch (e) { return []; }
+}
+function savePosts(l) { localStorage.setItem(K_POSTS, JSON.stringify(l)); }
+
+function getNotifs() {
+  try { return JSON.parse(localStorage.getItem(K_NOTIFS) || '[]'); }
+  catch (e) { return []; }
+}
+function saveNotifs(l) { localStorage.setItem(K_NOTIFS, JSON.stringify(l)); }
+
+function getMsgs() {
+  try { return JSON.parse(localStorage.getItem(K_MSGS) || '[]'); }
+  catch (e) { return []; }
+}
+function saveMsgs(l) { localStorage.setItem(K_MSGS, JSON.stringify(l)); }
+
+function currentUser() { return localStorage.getItem(K_SESSION); }
+function setSession(l) {
+  if (l) localStorage.setItem(K_SESSION, l);
+  else localStorage.removeItem(K_SESSION);
+}
+
+/* =========================================================
+   УТИЛИТЫ
+   ========================================================= */
+function esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+    return ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[c];
+  });
+}
+function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
+
+function fmtDate(ts) {
+  var d = new Date(ts);
+  var p = function (n) { return String(n).padStart(2, '0'); };
+  return p(d.getDate()) + '.' + p(d.getMonth() + 1) + '.' + d.getFullYear() + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+}
+
+function fmtAgo(ts) {
+  var diff = Math.floor((Date.now() - ts) / 1000);
+  if (diff < 60) return 'только что';
+  if (diff < 3600) return Math.floor(diff / 60) + ' мин назад';
+  if (diff < 86400) return Math.floor(diff / 3600) + ' ч назад';
+  if (diff < 2592000) return Math.floor(diff / 86400) + ' дн назад';
+  return fmtDate(ts);
+}
+
+function getUser(login) {
+  var u = getUsers();
+  for (var i = 0; i < u.length; i++) if (u[i].login === login) return u[i];
+  return null;
+}
+
+function updateUser(login, patch) {
+  var u = getUsers();
+  for (var i = 0; i < u.length; i++) {
+    if (u[i].login === login) {
+      for (var k in patch) u[i][k] = patch[k];
+      break;
+    }
+  }
+  saveUsers(u);
+}
+
+function readImageFile(file, cb) {
+  var r = new FileReader();
+  r.onload = function (e) {
+    var img = new Image();
+    img.onload = function () {
+      var MAX = 900, w = img.width, h = img.height;
+      if (w > MAX) { h = Math.round(h * MAX / w); w = MAX; }
+      var cv = document.createElement('canvas');
+      cv.width = w; cv.height = h;
+      cv.getContext('2d').drawImage(img, 0, 0, w, h);
+      try { cb(cv.toDataURL('image/jpeg', 0.8)); }
+      catch (x) { cb(e.target.result); }
+    };
+    img.onerror = function () { cb(e.target.result); };
+    img.src = e.target.result;
+  };
+  r.readAsDataURL(file);
+}
+
+function readVideoFile(file, cb, errCb) {
+  if (file.size > 6 * 1024 * 1024) {
+    errCb('Видео больше 6 МБ. Браузер не сохранит такое в localStorage.');
+    return;
+  }
+  var url = URL.createObjectURL(file);
+  var v = document.createElement('video');
+  v.preload = 'metadata';
+  v.onloadedmetadata = function () {
+    URL.revokeObjectURL(url);
+    if (v.duration > 15.5) {
+      errCb('Видео длится ' + Math.round(v.duration) + ' сек. Максимум 15 секунд.');
+      return;
+    }
+    var r = new FileReader();
+    r.onload = function (e) { cb(e.target.result); };
+    r.readAsDataURL(file);
+  };
+  v.onerror = function () {
+    URL.revokeObjectURL(url);
+    errCb('Не удалось прочитать видео.');
+  };
+  v.src = url;
+}
+
+function sanitizeHtml(html) {
+  var div = document.createElement('div');
+  div.innerHTML = html;
+  var bad = div.querySelectorAll('script,style,iframe,object,embed,link,meta');
+  for (var i = 0; i < bad.length; i++) bad[i].parentNode.removeChild(bad[i]);
+  var all = div.querySelectorAll('*');
+  for (var j = 0; j < all.length; j++) {
+    var attrs = all[j].attributes;
+    for (var k = attrs.length - 1; k >= 0; k--) {
+      var name = attrs[k].name.toLowerCase();
+      var val = String(attrs[k].value).toLowerCase();
+      if (name.indexOf('on') === 0) all[j].removeAttribute(attrs[k].name);
+      if ((name === 'href' || name === 'src') && val.indexOf('javascript:') === 0) all[j].removeAttribute(attrs[k].name);
+    }
+  }
+  return div.innerHTML;
+}
+
+function isFriend(a, b) {
+  var u = getUser(a);
+  return !!(u && u.friends && u.friends.indexOf(b) >= 0);
+}
+function isFollowing(a, b) {
+  var u = getUser(a);
+  return !!(u && u.following && u.following.indexOf(b) >= 0);
+}
+function hasOutgoingRequest(a, b) {
+  var u = getUser(a);
+  if (!u || !u.sentRequests) return false;
+  for (var i = 0; i < u.sentRequests.length; i++) if (u.sentRequests[i].to === b) return true;
+  return false;
+}
+function hasIncomingRequest(a, b) {
+  var u = getUser(a);
+  if (!u || !u.friendRequests) return false;
+  for (var i = 0; i < u.friendRequests.length; i++) if (u.friendRequests[i].from === b) return true;
+  return false;
+}
+
+/* =========================================================
+   УВЕДОМЛЕНИЯ
+   ========================================================= */
+function addNotif(to, from, type, text, data) {
+  var n = getNotifs();
+  n.push({ id: uid(), to: to, from: from, type: type, text: text, data: data || {}, date: Date.now(), read: false });
+  saveNotifs(n);
+}
+
+function unreadNotifs(login) {
+  return getNotifs().filter(function (x) { return x.to === login && !x.read; }).length;
+}
+
+function unreadMsgs(login) {
+  return getMsgs().filter(function (x) { return x.to === login && !x.read; }).length;
+}
+
+/* =========================================================
+   НАВИГАЦИЯ
+   ========================================================= */
+var CURRENT_PAGE = 'home';
+var CURRENT_ARG  = null;
+
+function updateNav() {
+  var u = currentUser();
+  var nav = document.getElementById('top-nav');
+  var out = [];
+
+  out.push('<a href="#" data-action="goto" data-page="home">Главная</a>');
+
+  if (u) {
+    out.push('|');
+    out.push('<a href="#" data-action="goto" data-page="feed">Лента</a>');
+    out.push('<a href="#" data-action="goto" data-page="feed-sub">Подписки</a>');
+    out.push('<a href="#" data-action="goto" data-page="sections">Разделы</a>');
+    out.push('<a href="#" data-action="goto" data-page="publish">Опубликовать</a>');
+    out.push('<a href="#" data-action="goto" data-page="profiles">Люди</a>');
+    out.push('<a href="#" data-action="goto" data-page="gallery">Фото</a>');
+    out.push('<a href="#" data-action="goto" data-page="profile">Кабинет</a>');
+
+    var ms = unreadMsgs(u);
+    out.push('<a href="#" data-action="goto" data-page="messages">Сообщения' + (ms ? ' (' + ms + ')' : '') + '</a>');
+
+    var nn = unreadNotifs(u);
+    out.push('<a href="#" data-action="goto" data-page="notifications">Уведомления' + (nn ? ' (' + nn + ')' : '') + '</a>');
+
+    out.push('<a href="#" data-action="goto" data-page="settings">Настройки</a>');
+    out.push('|');
+    out.push('<b>' + esc(u) + '</b>');
+    out.push('<a href="#" data-action="logout">Выйти</a>');
+  } else {
+    out.push('|');
+    out.push('<a href="#" data-action="goto" data-page="sections">Разделы</a>');
+    out.push('<a href="#" data-action="goto" data-page="profiles">Люди</a>');
+  }
+
+  nav.innerHTML = out.join(' ');
+}
+
+function showPage(name, arg) {
+  var u = currentUser();
+  if (!u && name !== 'home' && name !== 'sections' && name !== 'profiles' && name !== 'profile') {
+    name = 'home';
+  }
+
+  var all = document.querySelectorAll('#main > div');
+  for (var i = 0; i < all.length; i++) all[i].hidden = true;
+
+  var el = document.getElementById('page-' + name);
+  if (!el) { el = document.getElementById('page-home'); name = 'home'; }
+  el.hidden = false;
+
+  if (name === 'home')            renderHome();
+  else if (name === 'feed')       renderFeed();
+  else if (name === 'feed-sub')   renderFeedSub();
+  else if (name === 'sections')   renderSections();
+  else if (name === 'section')    renderSection(arg);
+  else if (name === 'profiles')   renderProfiles();
+  else if (name === 'gallery')    renderGallery();
+  else if (name === 'publish')    renderPublish();
+  else if (name === 'profile')    renderProfile(arg);
+  else if (name === 'settings')   renderSettings();
+  else if (name === 'notifications') renderNotifications();
+  else if (name === 'messages')   renderMessages();
+  else if (name === 'conversation') renderConversation(arg);
+
+  CURRENT_PAGE = name;
+  CURRENT_ARG  = arg;
+  window.scrollTo(0, 0);
+}
+
+function refreshCurrent() { showPage(CURRENT_PAGE, CURRENT_ARG); }
+
+/* =========================================================
+   ОБРАБОТЧИК КЛИКОВ
+   ========================================================= */
+document.body.addEventListener('click', function (ev) {
+  var t = ev.target.closest ? ev.target.closest('[data-action]') : null;
+  if (!t) return;
+  ev.preventDefault();
+  var a = t.getAttribute('data-action');
+
+  if (a === 'goto')           showPage(t.getAttribute('data-page'));
+  else if (a === 'section')   showPage('section', t.getAttribute('data-section'));
+  else if (a === 'profile')   showPage('profile', t.getAttribute('data-arg'));
+  else if (a === 'convo')     showPage('conversation', t.getAttribute('data-arg'));
+  else if (a === 'logout')    { setSession(null); updateNav(); showPage('home'); }
+  else if (a === 'show-login') { document.getElementById('login-block').hidden = false; }
+  else if (a === 'hide-login') { document.getElementById('login-block').hidden = true; }
+  else if (a === 'toggle-edit-profile') {
+    var b = document.getElementById('edit-profile-block');
+    if (b) b.hidden = !b.hidden;
+  }
+});
+
+/* =========================================================
+   ГЛАВНАЯ
+   ========================================================= */
+function renderHome() {
+  var el = document.getElementById('page-home');
+  var u = currentUser();
+  var users = getUsers();
+  var posts = getPosts();
+  var articlesCount = posts.filter(function (p) { return p.type === 'article'; }).length;
+
+  var html = '<h2>Главная</h2>';
+
+  html += '<p><b>Участников в собрании:</b> ' + users.length + ' &nbsp;|&nbsp; <b>Статей опубликовано:</b> ' + articlesCount + '</p>';
+
+  if (!u) {
+    html += '<h3>Регистрация</h3>';
+    html += '<form id="form-register">';
+    html += '<p><label>Имя (логин):<br><input type="text" id="reg-login" minlength="3" maxlength="32" required></label></p>';
+    html += '<p><label>Пароль:<br><input type="password" id="reg-pass" minlength="4" required></label></p>';
+    html += '<p><label>Пароль ещё раз:<br><input type="password" id="reg-pass2" required></label></p>';
+    html += '<p><button type="submit">Зарегистрироваться</button></p>';
+    html += '</form>';
+    html += '<div id="reg-msg"></div>';
+
+    html += '<p>Уже есть аккаунт? <a href="#" data-action="show-login">Войти</a></p>';
+    html += '<div id="login-block" hidden>';
+    html += '<h3>Вход</h3>';
+    html += '<form id="form-login">';
+    html += '<p><label>Имя:<br><input type="text" id="log-login" required></label></p>';
+    html += '<p><label>Пароль:<br><input type="password" id="log-pass" required></label></p>';
+    html += '<p><button type="submit">Войти</button></p>';
+    html += '</form>';
+    html += '<div id="login-msg"></div>';
+    html += '</div>';
+  } else {
+    var uo = getUser(u);
+    html += '<p>Добро пожаловать, <b>' + esc(u) + '</b>.</p>';
+    html += '<ul>';
+    html += '<li><a href="#" data-action="goto" data-page="feed">Общая лента статей</a></li>';
+    html += '<li><a href="#" data-action="goto" data-page="feed-sub">Лента подписок и друзей</a></li>';
+    html += '<li><a href="#" data-action="goto" data-page="publish">Опубликовать статью</a></li>';
+    html += '<li><a href="#" data-action="goto" data-page="profile">Мой кабинет (стена, друзья, инфо)</a></li>';
+    html += '<li><a href="#" data-action="goto" data-page="messages">Личные сообщения</a></li>';
+    html += '<li><a href="#" data-action="goto" data-page="notifications">Уведомления</a></li>';
+    html += '<li><a href="#" data-action="goto" data-page="profiles">Найти людей</a></li>';
+    html += '</ul>';
+  }
+
+  html += '<h3>Разделы (20)</h3>';
+  html += '<ul>';
+  for (var k in SECTIONS) {
+    html += '<li><a href="#" data-action="section" data-section="' + k + '">' + esc(SECTIONS[k].name) + '</a> - ' + esc(SECTIONS[k].desc) + '</li>';
+  }
+  html += '</ul>';
+
+  html += '<h3>О проекте</h3>';
+  html += '<p>Scientific Network есть сетевое собрание для интеллектуалов. Здесь публикуют статьи по разделам, ведут личные страницы с расширенной информацией о себе, обмениваются сообщениями, добавляют в друзья и подписываются.</p>';
+  html += '<p>Правила просты: пишите вдумчиво, спорьте с мыслью, а не с человеком, не выдавайте чужое за своё.</p>';
+
+  el.innerHTML = html;
+
+  if (!u) {
+    var f1 = document.getElementById('form-register');
+    if (f1) f1.addEventListener('submit', onRegister);
+    var f2 = document.getElementById('form-login');
+    if (f2) f2.addEventListener('submit', onLogin);
+  }
+}
+
+/* =========================================================
+   РЕГИСТРАЦИЯ / ВХОД
+   ========================================================= */
+function onRegister(ev) {
+  ev.preventDefault();
+  var login = (document.getElementById('reg-login').value || '').trim();
+  var p1 = document.getElementById('reg-pass').value || '';
+  var p2 = document.getElementById('reg-pass2').value || '';
+  var msg = document.getElementById('reg-msg');
+
+  if (!login || !p1) { msg.innerHTML = '<b>Ошибка.</b> Заполните поля.'; return; }
+  if (login.length < 3) { msg.innerHTML = '<b>Ошибка.</b> Минимум 3 знака в имени.'; return; }
+  if (!/^[A-Za-zА-Яа-яЁё0-9 _\-\.]+$/.test(login)) { msg.innerHTML = '<b>Ошибка.</b> Недопустимые символы в имени.'; return; }
+  if (p1.length < 4) { msg.innerHTML = '<b>Ошибка.</b> Пароль минимум 4 знака.'; return; }
+  if (p1 !== p2) { msg.innerHTML = '<b>Ошибка.</b> Пароли не совпадают.'; return; }
+
+  var users = getUsers();
+  for (var i = 0; i < users.length; i++) {
+    if (users[i].login.toLowerCase() === login.toLowerCase()) {
+      msg.innerHTML = '<b>Ошибка.</b> Такое имя уже занято.';
+      return;
+    }
+  }
+
+  users.push({
+    login: login,
+    password: p1,
+    registered: Date.now(),
+    bio: '', avatar: '',
+    gender: '', age: '', city: '', occupation: '',
+    music: '', books: '', films: '', hobbies: '',
+    friendsVisible: true,
+    friends: [], friendRequests: [], sentRequests: [],
+    following: [], subscribers: []
+  });
+  saveUsers(users);
+  setSession(login);
+  updateNav();
+  showPage('profile');
+}
+
+function onLogin(ev) {
+  ev.preventDefault();
+  var login = (document.getElementById('log-login').value || '').trim();
+  var pass = document.getElementById('log-pass').value || '';
+  var msg = document.getElementById('login-msg');
+
+  if (!login || !pass) { msg.innerHTML = '<b>Ошибка.</b> Заполните поля.'; return; }
+
+  var users = getUsers();
+  for (var i = 0; i < users.length; i++) {
+    if (users[i].login.toLowerCase() === login.toLowerCase()) {
+      if (users[i].password === pass) {
+        setSession(users[i].login);
+        updateNav();
+        showPage('feed');
+        return;
+      }
+      msg.innerHTML = '<b>Ошибка.</b> Пароль неверен.';
+      return;
+    }
+  }
+  msg.innerHTML = '<b>Ошибка.</b> Участник не найден.';
+}
+
+/* =========================================================
+   ЛЕНТА (все статьи)
+   ========================================================= */
+function renderFeed() {
+  var el = document.getElementById('page-feed');
+  var posts = getPosts().filter(function (p) { return p.type === 'article'; });
+  posts.sort(function (a, b) { return b.date - a.date; });
+
+  var html = '<h2>Общая лента статей</h2>';
+  html += '<p>Все статьи по всем разделам. Всего статей: ' + posts.length + '</p>';
+
+  if (posts.length === 0) {
+    html += '<p><i>Статей ещё нет.</i></p>';
+  } else {
+    for (var i = 0; i < posts.length; i++) html += postHtml(posts[i], { showAuthor: true, showSection: true });
+  }
+
+  el.innerHTML = html;
+  bindPostActions(el);
+}
+
+/* =========================================================
+   ЛЕНТА ПОДПИСОК
+   ========================================================= */
+function renderFeedSub() {
+  var el = document.getElementById('page-feed-sub');
+  var me = currentUser();
+  var u = getUser(me);
+  if (!u) { el.innerHTML = '<h2>Лента подписок</h2><p>Не авторизован.</p>'; return; }
+
+  var sources = {};
+  (u.friends || []).forEach(function (f) { sources[f] = true; });
+  (u.following || []).forEach(function (f) { sources[f] = true; });
+
+  var posts = getPosts().filter(function (p) {
+    return sources[p.author] && p.author !== me;
+  });
+  posts.sort(function (a, b) { return b.date - a.date; });
+
+  var html = '<h2>Лента подписок и друзей</h2>';
+  html += '<p>Публикации от ' + Object.keys(sources).length + ' человек. Всего: ' + posts.length + '</p>';
+
+  if (posts.length === 0) {
+    html += '<p><i>Здесь пока тихо. Подпишитесь на кого-нибудь или добавьте в друзья.</i></p>';
+    html += '<p><a href="#" data-action="goto" data-page="profiles">Перейти к списку людей</a></p>';
+  } else {
+    for (var i = 0; i < posts.length; i++) html += postHtml(posts[i], { showAuthor: true, showSection: true });
+  }
+
+  el.innerHTML = html;
+  bindPostActions(el);
+}
+
+/* =========================================================
+   РАЗДЕЛЫ
+   ========================================================= */
+function renderSections() {
+  var el = document.getElementById('page-sections');
+  var html = '<h2>Разделы (20)</h2><ul>';
+  for (var k in SECTIONS) {
+    html += '<li><a href="#" data-action="section" data-section="' + k + '">' + esc(SECTIONS[k].name) + '</a> - ' + esc(SECTIONS[k].desc) + '</li>';
+  }
+  html += '</ul>';
+  el.innerHTML = html;
+}
+
+function renderSection(key) {
+  var el = document.getElementById('page-section');
+  var s = SECTIONS[key];
+  if (!s) { el.innerHTML = '<h2>Раздел не найден</h2>'; return; }
+
+  var posts = getPosts().filter(function (p) { return p.type === 'article' && p.section === key; });
+  posts.sort(function (a, b) { return b.date - a.date; });
+
+  var html = '<h2>' + esc(s.name) + '</h2>';
+  html += '<p><i>' + esc(s.desc) + '</i></p>';
+  html += '<p>Всего в разделе: ' + posts.length + '</p>';
+  html += '<p><a href="#" data-action="goto" data-page="sections">Все разделы</a></p>';
+
+  if (posts.length === 0) {
+    html += '<p><i>Здесь пока пусто.</i></p>';
+  } else {
+    for (var i = 0; i < posts.length; i++) html += postHtml(posts[i], { showAuthor: true });
+  }
+
+  el.innerHTML = html;
+  bindPostActions(el);
+}
+
+/* =========================================================
+   РЕНДЕР ОДНОГО ПОСТА
+   ========================================================= */
+function postHtml(p, opts) {
+  opts = opts || {};
+  var me = currentUser();
+  var isOwner = (p.author === me);
+
+  var html = '<article data-id="' + p.id + '">';
+
+  if (p.type === 'personal') {
+    html += '<p><small>Личная запись · ' + fmtAgo(p.date);
+    if (opts.showAuthor) {
+      html += ' · <a href="#" data-action="profile" data-arg="' + esc(p.author) + '">' + esc(p.author) + '</a>';
+    }
+    html += '</small></p>';
+    html += '<div>' + (p.html || esc(p.text || '')) + '</div>';
+  } else {
+    if (p.title) html += '<h3>' + esc(p.title) + '</h3>';
+    html += '<p><small>';
+    if (opts.showSection) html += 'Раздел: ' + esc((SECTIONS[p.section] || {}).name || p.section) + ' · ';
+    if (opts.showAuthor) html += 'Автор: <a href="#" data-action="profile" data-arg="' + esc(p.author) + '">' + esc(p.author) + '</a> · ';
+    html += fmtAgo(p.date);
+    html += '</small></p>';
+    html += '<p>' + esc(p.text || '').replace(/\n/g, '<br>') + '</p>';
+  }
+
+  if (p.image) html += '<p><img src="' + esc(p.image) + '" alt="" style="max-width:400px;"></p>';
+  if (p.video) html += '<p><video src="' + esc(p.video) + '" controls style="max-width:400px;"></video></p>';
+
+  var actions = [];
+  if (isOwner) actions.push('<button type="button" class="post-del" data-id="' + p.id + '">Удалить</button>');
+  if (actions.length) html += '<p>' + actions.join(' ') + '</p>';
+
+  html += '</article><hr>';
+  return html;
+}
+
+function bindPostActions(root) {
+  var btns = root.querySelectorAll('.post-del');
+  for (var i = 0; i < btns.length; i++) {
+    btns[i].addEventListener('click', function () {
+      if (!confirm('Удалить запись безвозвратно?')) return;
+      var id = this.getAttribute('data-id');
+      var posts = getPosts().filter(function (p) { return p.id !== id; });
+      savePosts(posts);
+      refreshCurrent();
+    });
+  }
+}
+
+/* =========================================================
+   ЛЮДИ
+   ========================================================= */
+function renderProfiles() {
+  var el = document.getElementById('page-profiles');
+  var users = getUsers();
+  var me = currentUser();
+
+  var html = '<h2>Люди</h2>';
+  html += '<p>Всего участников: ' + users.length + '</p>';
+
+  if (users.length === 0) {
+    html += '<p><i>Пока никто не зарегистрировался.</i></p>';
+  } else {
+    html += '<ul>';
+    for (var i = 0; i < users.length; i++) {
+      var u = users[i];
+      html += '<li><a href="#" data-action="profile" data-arg="' + esc(u.login) + '">' + esc(u.login) + '</a>';
+      if (u.city) html += ', ' + esc(u.city);
+      if (u.occupation) html += ', ' + esc(u.occupation);
+      if (u.login === me) html += ' (вы)';
+      html += '</li>';
+    }
+    html += '</ul>';
+  }
+
+  el.innerHTML = html;
+}
+
+/* =========================================================
+   ФОТО
+   ========================================================= */
+function renderGallery() {
+  var el = document.getElementById('page-gallery');
+  var posts = getPosts().filter(function (p) { return p.image || p.video; });
+  posts.sort(function (a, b) { return b.date - a.date; });
+
+  var html = '<h2>Фотографии и видео</h2>';
+  if (posts.length === 0) {
+    html += '<p><i>Пока ничего не приложено.</i></p>';
+  } else {
+    html += '<ul>';
+    for (var i = 0; i < posts.length; i++) {
+      var p = posts[i];
+      html += '<li>';
+      if (p.image) html += '<p><img src="' + esc(p.image) + '" alt="" style="max-width:400px;"></p>';
+      if (p.video) html += '<p><video src="' + esc(p.video) + '" controls style="max-width:400px;"></video></p>';
+      if (p.title) html += '<p>' + esc(p.title) + '</p>';
+      html += '<p><small><a href="#" data-action="profile" data-arg="' + esc(p.author) + '">' + esc(p.author) + '</a> · ' + fmtAgo(p.date) + '</small></p>';
+      html += '</li>';
+    }
+    html += '</ul>';
+  }
+  el.innerHTML = html;
+}
+
+/* =========================================================
+   ПУБЛИКАЦИЯ СТАТЬИ
+   ========================================================= */
+function renderPublish() {
+  var el = document.getElementById('page-publish');
+  var html = '<h2>Новая статья</h2>';
+  html += '<form id="form-publish">';
+  html += '<p><label>Раздел:<br><select id="pub-section">';
+  for (var k in SECTIONS) html += '<option value="' + k + '">' + esc(SECTIONS[k].name) + '</option>';
+  html += '</select></label></p>';
+  html += '<p><label>Заглавие:<br><input type="text" id="pub-title" maxlength="140"></label></p>';
+  html += '<p><label>Текст:<br><textarea id="pub-text" rows="12" maxlength="20000" required></textarea></label></p>';
+  html += '<p><label>Изображение (ссылка):<br><input type="text" id="pub-image" placeholder="https://..."></label></p>';
+  html += '<p><label>Или файл изображения:<br><input type="file" id="pub-image-file" accept="image/*"></label></p>';
+  html += '<p><label>Видео (ссылка, до 15 сек):<br><input type="text" id="pub-video" placeholder="https://..."></label></p>';
+  html += '<p><label>Или файл видео (до 15 сек, до 6 МБ):<br><input type="file" id="pub-video-file" accept="video/*"></label></p>';
+  html += '<p><button type="submit">Опубликовать</button></p>';
+  html += '</form>';
+  html += '<div id="pub-msg"></div>';
+  el.innerHTML = html;
+
+  var imgFile = document.getElementById('pub-image-file');
+  var imgUrl  = document.getElementById('pub-image');
+  imgFile.addEventListener('change', function () {
+    var f = imgFile.files[0]; if (!f) return;
+    readImageFile(f, function (d) { imgUrl.value = d; });
+  });
+
+  var vidFile = document.getElementById('pub-video-file');
+  var vidUrl  = document.getElementById('pub-video');
+  vidFile.addEventListener('change', function () {
+    var f = vidFile.files[0]; if (!f) return;
+    readVideoFile(f,
+      function (d) { vidUrl.value = d; },
+      function (err) { alert(err); vidFile.value = ''; });
+  });
+
+  document.getElementById('form-publish').addEventListener('submit', onPublish);
+}
+
+function onPublish(ev) {
+  ev.preventDefault();
+  var section = document.getElementById('pub-section').value;
+  var title = (document.getElementById('pub-title').value || '').trim();
+  var text = (document.getElementById('pub-text').value || '').trim();
+  var image = (document.getElementById('pub-image').value || '').trim();
+  var video = (document.getElementById('pub-video').value || '').trim();
+  var msg = document.getElementById('pub-msg');
+
+  if (!text) { msg.innerHTML = '<b>Ошибка.</b> Текст пуст.'; return; }
+  if (text.length < 3) { msg.innerHTML = '<b>Ошибка.</b> Слишком коротко.'; return; }
+
+  var posts = getPosts();
+  posts.push({
+    id: uid(), author: currentUser(), type: 'article',
+    section: section, title: title, text: text,
+    image: image, video: video,
+    date: Date.now()
+  });
+  savePosts(posts);
+
+  msg.innerHTML = '<b>Статья опубликована.</b>';
+  setTimeout(function () { showPage('section', section); }, 400);
+}
+
+/* =========================================================
+   ЛИЧНАЯ СТРАНИЦА
+   ========================================================= */
+function renderProfile(login) {
+  var el = document.getElementById('page-profile');
+  var me = currentUser();
+  login = login || me;
+
+  var u = getUser(login);
+  if (!u) { el.innerHTML = '<h2>Профиль не найден</h2>'; return; }
+
+  var isMe = (login === me);
+  var uMe = me ? getUser(me) : null;
+  var html = '<h2>Кабинет ' + esc(u.login) + '</h2>';
+
+  html += '<h3>Сведения</h3>';
+  if (u.avatar) html += '<p><img src="' + esc(u.avatar) + '" alt="" style="max-width:150px;"></p>';
+  html += '<p><small>В собрании с ' + fmtDate(u.registered || Date.now()) + '</small></p>';
+  html += '<ul>';
+  if (u.gender)     html += '<li>Пол: ' + esc(u.gender) + '</li>';
+  if (u.age)        html += '<li>Возраст: ' + esc(u.age) + '</li>';
+  if (u.city)       html += '<li>Город: ' + esc(u.city) + '</li>';
+  if (u.occupation) html += '<li>Занятие: ' + esc(u.occupation) + '</li>';
+  if (u.music)      html += '<li>Музыка: ' + esc(u.music) + '</li>';
+  if (u.books)      html += '<li>Книги: ' + esc(u.books) + '</li>';
+  if (u.films)      html += '<li>Фильмы: ' + esc(u.films) + '</li>';
+  if (u.hobbies)    html += '<li>Увлечения: ' + esc(u.hobbies) + '</li>';
+  html += '</ul>';
+  html += '<p><b>О себе:</b><br>' + (u.bio ? esc(u.bio).replace(/\n/g, '<br>') : '<i>Не указано.</i>') + '</p>';
+
+  /* ---------- Статистика ---------- */
+  html += '<h3>Связи</h3>';
+  html += '<p>Друзей: ' + (u.friends ? u.friends.length : 0) +
+          ' · Подписчиков: ' + (u.subscribers ? u.subscribers.length : 0) +
+          ' · Подписок: ' + (u.following ? u.following.length : 0) + '</p>';
+
+  /* ---------- Кнопки действий (если не я) ---------- */
+  if (!isMe && uMe) {
+    html += '<p>';
+
+    /* Дружба */
+    if (isFriend(me, login)) {
+      html += '<button type="button" data-friendaction="unfriend" data-target="' + esc(login) + '">Удалить из друзей</button> ';
+    } else if (hasOutgoingRequest(me, login)) {
+      html += '<i>Заявка в друзья отправлена.</i> ';
+    } else if (hasIncomingRequest(me, login)) {
+      html += '<button type="button" data-friendaction="accept" data-target="' + esc(login) + '">Принять заявку</button> ';
+      html += '<button type="button" data-friendaction="decline" data-target="' + esc(login) + '">Отклонить заявку</button> ';
+    } else {
+      html += '<button type="button" data-friendaction="request" data-target="' + esc(login) + '">Добавить в друзья</button> ';
+    }
+
+    /* Подписка */
+    if (isFollowing(me, login)) {
+      html += '<button type="button" data-subaction="unsub" data-target="' + esc(login) + '">Отписаться</button> ';
+    } else {
+      html += '<button type="button" data-subaction="sub" data-target="' + esc(login) + '">Подписаться</button> ';
+    }
+
+    /* Сообщение */
+    html += '<a href="#" data-action="convo" data-arg="' + esc(login) + '">Написать сообщение</a>';
+
+    html += '</p>';
+  }
+
+  /* ---------- Список друзей (если разрешено) ---------- */
+  var showFriends = isMe || u.friendsVisible !== false;
+  if (showFriends && u.friends && u.friends.length > 0) {
+    html += '<p><b>Друзья:</b> ';
+    var arr = [];
+    for (var i = 0; i < u.friends.length; i++) {
+      arr.push('<a href="#" data-action="profile" data-arg="' + esc(u.friends[i]) + '">' + esc(u.friends[i]) + '</a>');
+    }
+    html += arr.join(', ');
+    html += '</p>';
+  } else if (!showFriends) {
+    html += '<p><i>Список друзей скрыт.</i></p>';
+  }
+
+  /* ---------- Входящие заявки (для меня) ---------- */
+  if (isMe && u.friendRequests && u.friendRequests.length > 0) {
+    html += '<h3>Входящие заявки в друзья</h3><ul>';
+    for (var j = 0; j < u.friendRequests.length; j++) {
+      var r = u.friendRequests[j];
+      html += '<li>' + esc(r.from) + ' ';
+      html += '<button type="button" data-friendaction="accept" data-target="' + esc(r.from) + '">Принять</button> ';
+      html += '<button type="button" data-friendaction="decline" data-target="' + esc(r.from) + '">Отклонить</button>';
+      html += '</li>';
+    }
+    html += '</ul>';
+  }
+
+  /* ---------- Редактирование (для меня) ---------- */
+  if (isMe) {
+    html += '<p><button type="button" data-action="toggle-edit-profile">Изменить сведения</button></p>';
+    html += '<div id="edit-profile-block" hidden>';
+    html += '<h3>Редактировать профиль</h3>';
+    html += '<form id="form-edit-profile">';
+    html += '<p><label>Аватар (ссылка):<br><input type="text" id="ep-avatar" value="' + esc(u.avatar || '') + '"></label></p>';
+    html += '<p><label>Или файл:<br><input type="file" id="ep-avatar-file" accept="image/*"></label></p>';
+    html += '<p><label>Пол:<br><select id="ep-gender">';
+    var genders = ['', 'Мужской', 'Женский', 'Другой', 'Не указан'];
+    for (var g = 0; g < genders.length; g++) {
+      html += '<option value="' + genders[g] + '"' + ((u.gender === genders[g]) ? ' selected' : '') + '>' + (genders[g] || '— не указан —') + '</option>';
+    }
+    html += '</select></label></p>';
+    html += '<p><label>Возраст:<br><input type="number" id="ep-age" min="1" max="150" value="' + esc(u.age || '') + '"></label></p>';
+    html += '<p><label>Город:<br><input type="text" id="ep-city" maxlength="80" value="' + esc(u.city || '') + '"></label></p>';
+    html += '<p><label>Занятие:<br><input type="text" id="ep-occupation" maxlength="120" value="' + esc(u.occupation || '') + '"></label></p>';
+    html += '<p><label>О себе:<br><textarea id="ep-bio" rows="4" maxlength="800">' + esc(u.bio || '') + '</textarea></label></p>';
+    html += '<p><label>Любимая музыка:<br><input type="text" id="ep-music" maxlength="200" value="' + esc(u.music || '') + '"></label></p>';
+    html += '<p><label>Любимые книги:<br><input type="text" id="ep-books" maxlength="200" value="' + esc(u.books || '') + '"></label></p>';
+    html += '<p><label>Любимые фильмы:<br><input type="text" id="ep-films" maxlength="200" value="' + esc(u.films || '') + '"></label></p>';
+    html += '<p><label>Увлечения:<br><input type="text" id="ep-hobbies" maxlength="200" value="' + esc(u.hobbies || '') + '"></label></p>';
+    html += '<p><button type="submit">Сохранить</button></p>';
+    html += '</form>';
+    html += '</div>';
+  }
+
+  /* ---------- Стена: публикация (для меня) ---------- */
+  if (isMe) {
+    html += '<h3>Написать на своей стене</h3>';
+    html += '<p>Форматирование: ';
+    html += '<button type="button" data-fmt="bold">Жирный</button> ';
+    html += '<button type="button" data-fmt="italic">Курсив</button> ';
+    html += '<button type="button" data-fmt="underline">Подчёркнутый</button> ';
+    html += '<button type="button" data-fmt="insertUnorderedList">Список</button>';
+    html += '</p>';
+    html += '<div id="wall-editor" contenteditable="true" style="border:1px solid #999;min-height:80px;padding:6px;"></div>';
+    html += '<p><label>Изображение (ссылка или файл):<br><input type="text" id="wall-image"></label></p>';
+    html += '<p><input type="file" id="wall-image-file" accept="image/*"></p>';
+    html += '<p><label>Видео (ссылка, до 15 сек):<br><input type="text" id="wall-video"></label></p>';
+    html += '<p><input type="file" id="wall-video-file" accept="video/*"></p>';
+    html += '<p><button type="button" id="wall-publish">Опубликовать на стене</button></p>';
+    html += '<div id="wall-msg"></div>';
+  }
+
+  /* ---------- Стена: записи ---------- */
+  var wall = getPosts().filter(function (p) { return p.type === 'personal' && p.author === login; });
+  wall.sort(function (a, b) { return b.date - a.date; });
+
+  html += '<h3>Стена (' + wall.length + ')</h3>';
+  if (wall.length === 0) {
+    html += '<p><i>Пока пусто.</i></p>';
+  } else {
+    for (var w = 0; w < wall.length; w++) html += postHtml(wall[w], { showAuthor: false });
+  }
+
+  /* ---------- Статьи автора ---------- */
+  var arts = getPosts().filter(function (p) { return p.type === 'article' && p.author === login; });
+  arts.sort(function (a, b) { return b.date - a.date; });
+  html += '<h3>Статьи (' + arts.length + ')</h3>';
+  if (arts.length === 0) {
+    html += '<p><i>Пока нет.</i></p>';
+  } else {
+    for (var a = 0; a < arts.length; a++) html += postHtml(arts[a], { showSection: true });
+  }
+
+  el.innerHTML = html;
+  bindPostActions(el);
+  bindProfileActions(el, u, isMe);
+}
+
+function bindProfileActions(root, u, isMe) {
+  /* Дружба */
+  var fbtns = root.querySelectorAll('[data-friendaction]');
+  for (var i = 0; i < fbtns.length; i++) {
+    fbtns[i].addEventListener('click', function () {
+      var act = this.getAttribute('data-friendaction');
+      var tgt = this.getAttribute('data-target');
+      handleFriendAction(act, tgt);
+    });
+  }
+
+  /* Подписка */
+  var sbtns = root.querySelectorAll('[data-subaction]');
+  for (var j = 0; j < sbtns.length; j++) {
+    sbtns[j].addEventListener('click', function () {
+      var act = this.getAttribute('data-subaction');
+      var tgt = this.getAttribute('data-target');
+      handleSubAction(act, tgt);
+    });
+  }
+
+  if (!isMe) return;
+
+  /* Форматирование */
+  var editor = document.getElementById('wall-editor');
+  var fmts = root.querySelectorAll('[data-fmt]');
+  for (var k = 0; k < fmts.length; k++) {
+    fmts[k].addEventListener('mousedown', function (ev) {
+      ev.preventDefault();
+      document.execCommand(this.getAttribute('data-fmt'), false, null);
+      if (editor) editor.focus();
+    });
+  }
+
+  /* Файлы стены */
+  var wif = document.getElementById('wall-image-file');
+  var wiu = document.getElementById('wall-image');
+  if (wif) wif.addEventListener('change', function () {
+    var f = wif.files[0]; if (!f) return;
+    readImageFile(f, function (d) { wiu.value = d; });
+  });
+
+  var wvf = document.getElementById('wall-video-file');
+  var wvu = document.getElementById('wall-video');
+  if (wvf) wvf.addEventListener('change', function () {
+    var f = wvf.files[0]; if (!f) return;
+    readVideoFile(f,
+      function (d) { wvu.value = d; },
+      function (err) { alert(err); wvf.value = ''; });
+  });
+
+  /* Публикация на стене */
+  var wp = document.getElementById('wall-publish');
+  if (wp) wp.addEventListener('click', onWallPublish);
+
+  /* Редактирование профиля */
+  var epf = document.getElementById('ep-avatar-file');
+  var epu = document.getElementById('ep-avatar');
+  if (epf) epf.addEventListener('change', function () {
+    var f = epf.files[0]; if (!f) return;
+    readImageFile(f, function (d) { epu.value = d; });
+  });
+
+  var form = document.getElementById('form-edit-profile');
+  if (form) form.addEventListener('submit', onEditProfile);
+}
+
+function onEditProfile(ev) {
+  ev.preventDefault();
+  var me = currentUser();
+  updateUser(me, {
+    avatar:     (document.getElementById('ep-avatar').value || '').trim(),
+    gender:     document.getElementById('ep-gender').value,
+    age:        document.getElementById('ep-age').value,
+    city:       (document.getElementById('ep-city').value || '').trim(),
+    occupation: (document.getElementById('ep-occupation').value || '').trim(),
+    bio:        (document.getElementById('ep-bio').value || '').trim(),
+    music:      (document.getElementById('ep-music').value || '').trim(),
+    books:      (document.getElementById('ep-books').value || '').trim(),
+    films:      (document.getElementById('ep-films').value || '').trim(),
+    hobbies:    (document.getElementById('ep-hobbies').value || '').trim()
+  });
+  refreshCurrent();
+}
+
+function onWallPublish() {
+  var editor = document.getElementById('wall-editor');
+  var msgEl = document.getElementById('wall-msg');
+  var raw = editor.innerHTML || '';
+  var clean = sanitizeHtml(raw);
+  var textOnly = editor.innerText.trim();
+
+  if (!textOnly) { msgEl.innerHTML = '<b>Ошибка.</b> Пустая запись.'; return; }
+
+  var image = (document.getElementById('wall-image').value || '').trim();
+  var video = (document.getElementById('wall-video').value || '').trim();
+
+  var posts = getPosts();
+  posts.push({
+    id: uid(),
+    author: currentUser(),
+    type: 'personal',
+    html: clean,
+    text: textOnly,
+    image: image,
+    video: video,
+    date: Date.now()
+  });
+  savePosts(posts);
+
+  msgEl.innerHTML = '<b>Опубликовано.</b>';
+  setTimeout(refreshCurrent, 300);
+}
+
+/* =========================================================
+   ДРУЖБА / ПОДПИСКА
+   ========================================================= */
+function handleFriendAction(action, target) {
+  var me = currentUser();
+  if (!me || me === target) return;
+
+  if (action === 'request') {
+    if (isFriend(me, target)) return;
+    if (hasOutgoingRequest(me, target)) return;
+
+    var mySent = getUser(me).sentRequests || [];
+    mySent.push({ to: target, date: Date.now() });
+    updateUser(me, { sentRequests: mySent });
+
+    var theirReqs = getUser(target).friendRequests || [];
+    theirReqs.push({ from: me, date: Date.now() });
+    updateUser(target, { friendRequests: theirReqs });
+
+    addNotif(target, me, 'friend_request', me + ' просит добавить в друзья', { from: me });
+  }
+
+  else if (action === 'accept') {
+    var theirReqs2 = (getUser(me).friendRequests || []).filter(function (r) { return r.from !== target; });
+    updateUser(me, { friendRequests: theirReqs2 });
+
+    var myFriends = getUser(me).friends || [];
+    if (myFriends.indexOf(target) === -1) myFriends.push(target);
+    updateUser(me, { friends: myFriends });
+
+    var targetFriends = getUser(target).friends || [];
+    if (targetFriends.indexOf(me) === -1) targetFriends.push(me);
+    updateUser(target, { friends: targetFriends });
+
+    var theirSent = (getUser(target).sentRequests || []).filter(function (r) { return r.to !== me; });
+    updateUser(target, { sentRequests: theirSent });
+
+    addNotif(target, me, 'friend_accept', me + ' принял(а) вашу заявку в друзья', { from: me });
+  }
+
+  else if (action === 'decline') {
+    var theirReqs3 = (getUser(me).friendRequests || []).filter(function (r) { return r.from !== target; });
+    updateUser(me, { friendRequests: theirReqs3 });
+
+    var theirSent2 = (getUser(target).sentRequests || []).filter(function (r) { return r.to !== me; });
+    updateUser(target, { sentRequests: theirSent2 });
+  }
+
+  else if (action === 'unfriend') {
+    var mf = (getUser(me).friends || []).filter(function (f) { return f !== target; });
+    updateUser(me, { friends: mf });
+
+    var tf = (getUser(target).friends || []).filter(function (f) { return f !== me; });
+    updateUser(target, { friends: tf });
+  }
+
+  refreshCurrent();
+}
+
+function handleSubAction(action, target) {
+  var me = currentUser();
+  if (!me || me === target) return;
+
+  if (action === 'sub') {
+    if (isFollowing(me, target)) return;
+    var myFollowing = getUser(me).following || [];
+    myFollowing.push(target);
+    updateUser(me, { following: myFollowing });
+
+    var theirSubs = getUser(target).subscribers || [];
+    if (theirSubs.indexOf(me) === -1) theirSubs.push(me);
+    updateUser(target, { subscribers: theirSubs });
+
+    addNotif(target, me, 'subscribe', me + ' подписался(ась) на вас', { from: me });
+  }
+
+  else if (action === 'unsub') {
+    var mf2 = (getUser(me).following || []).filter(function (x) { return x !== target; });
+    updateUser(me, { following: mf2 });
+
+    var ts = (getUser(target).subscribers || []).filter(function (x) { return x !== me; });
+    updateUser(target, { subscribers: ts });
+  }
+
+  refreshCurrent();
+}
+
+/* =========================================================
+   НАСТРОЙКИ
+   ========================================================= */
+function renderSettings() {
+  var el = document.getElementById('page-settings');
+  var me = currentUser();
+  var u = getUser(me);
+  if (!u) { el.innerHTML = '<h2>Настройки</h2><p>Не авторизован.</p>'; return; }
+
+  var html = '<h2>Настройки</h2>';
+  html += '<form id="form-settings">';
+  html += '<p><label><input type="checkbox" id="st-friends"' + (u.friendsVisible !== false ? ' checked' : '') + '> Показывать список друзей на моей странице другим</label></p>';
+  html += '<p><button type="submit">Сохранить</button></p>';
+  html += '</form>';
+  html += '<div id="settings-msg"></div>';
+  el.innerHTML = html;
+
+  document.getElementById('form-settings').addEventListener('submit', function (ev) {
+    ev.preventDefault();
+    updateUser(me, { friendsVisible: document.getElementById('st-friends').checked });
+    document.getElementById('settings-msg').innerHTML = '<b>Сохранено.</b>';
+  });
+}
+
+/* =========================================================
+   УВЕДОМЛЕНИЯ
+   ========================================================= */
+function renderNotifications() {
+  var el = document.getElementById('page-notifications');
+  var me = currentUser();
+  var notifs = getNotifs().filter(function (n) { return n.to === me; });
+  notifs.sort(function (a, b) { return b.date - a.date; });
+
+  var html = '<h2>Уведомления</h2>';
+
+  if (notifs.length === 0) {
+    html += '<p><i>Пока уведомлений нет.</i></p>';
+  } else {
+    html += '<ul>';
+    for (var i = 0; i < notifs.length; i++) {
+      var n = notifs[i];
+      var mark = n.read ? '' : ' <b>[новое]</b>';
+      html += '<li>' + fmtAgo(n.date) + ': ' + esc(n.text) + mark + ' ';
+      html += '<a href="#" data-action="profile" data-arg="' + esc(n.from) + '">(открыть профиль)</a>';
+      html += '</li>';
+    }
+    html += '</ul>';
+    html += '<p><button type="button" id="notif-clear">Отметить все как прочитанные</button></p>';
+  }
+
+  el.innerHTML = html;
+
+  /* Отметить все прочитанными */
+  var all = getNotifs();
+  for (var j = 0; j < all.length; j++) {
+    if (all[j].to === me) all[j].read = true;
+  }
+  saveNotifs(all);
+  updateNav();
+}
+
+/* =========================================================
+   СООБЩЕНИЯ
+   ========================================================= */
+function renderMessages() {
+  var el = document.getElementById('page-messages');
+  var me = currentUser();
+  var msgs = getMsgs().filter(function (m) { return m.from === me || m.to === me; });
+
+  /* группируем по собеседнику */
+  var partners = {};
+  for (var i = 0; i < msgs.length; i++) {
+    var m = msgs[i];
+    var other = (m.from === me) ? m.to : m.from;
+    if (!partners[other]) partners[other] = { last: null, unread: 0 };
+    if (!partners[other].last || partners[other].last.date < m.date) {
+      partners[other].last = m;
+    }
+    if (m.to === me && !m.read) partners[other].unread++;
+  }
+
+  var html = '<h2>Сообщения</h2>';
+  html += '<p><a href="#" data-action="goto" data-page="profiles">Найти человека и написать</a></p>';
+
+  var keys = Object.keys(partners);
+  if (keys.length === 0) {
+    html += '<p><i>Пока нет переписки.</i></p>';
+  } else {
+    keys.sort(function (a, b) { return partners[b].last.date - partners[a].last.date; });
+    html += '<ul>';
+    for (var k = 0; k < keys.length; k++) {
+      var p = keys[k];
+      var info = partners[p];
+      var txt = info.last.text || (info.last.video ? '[видео]' : info.last.image ? '[фото]' : '');
+      if (txt.length > 60) txt = txt.slice(0, 60) + '...';
+      html += '<li>';
+      html += '<a href="#" data-action="convo" data-arg="' + esc(p) + '"><b>' + esc(p) + '</b></a>';
+      html += ' · ' + fmtAgo(info.last.date);
+      if (info.unread > 0) html += ' · <b>' + info.unread + ' непрочит.</b>';
+      html += '<br><small>' + esc(txt) + '</small>';
+      html += '</li>';
+    }
+    html += '</ul>';
+  }
+
+  el.innerHTML = html;
+}
+
+function renderConversation(partner) {
+  var el = document.getElementById('page-conversation');
+  var me = currentUser();
+  if (!me || !partner) { el.innerHTML = '<h2>Беседа</h2><p>Ошибка.</p>'; return; }
+
+  var msgs = getMsgs().filter(function (m) {
+    return (m.from === me && m.to === partner) || (m.from === partner && m.to === me);
+  });
+  msgs.sort(function (a, b) { return a.date - b.date; });
+
+  /* отметить прочитанными */
+  var all = getMsgs();
+  for (var i = 0; i < all.length; i++) {
+    if (all[i].to === me && all[i].from === partner) all[i].read = true;
+  }
+  saveMsgs(all);
+  updateNav();
+
+  var html = '<h2>Беседа с ' + esc(partner) + '</h2>';
+  html += '<p><a href="#" data-action="profile" data-arg="' + esc(partner) + '">Профиль</a> · ';
+  html += '<a href="#" data-action="goto" data-page="messages">Все сообщения</a></p>';
+
+  if (msgs.length === 0) {
+    html += '<p><i>Переписки ещё нет.</i></p>';
+  } else {
+    for (var k = 0; k < msgs.length; k++) {
+      var m = msgs[k];
+      var who = (m.from === me) ? 'Вы' : esc(m.from);
+      html += '<p><b>' + who + '</b> <small>(' + fmtAgo(m.date) + ')</small>:<br>';
+      if (m.text) html += esc(m.text).replace(/\n/g, '<br>');
+      if (m.image) html += '<br><img src="' + esc(m.image) + '" alt="" style="max-width:300px;">';
+      if (m.video) html += '<br><video src="' + esc(m.video) + '" controls style="max-width:300px;"></video>';
+      html += '</p>';
+    }
+  }
+
+  html += '<hr>';
+  html += '<form id="form-msg">';
+  html += '<p><label>Сообщение:<br><textarea id="msg-text" rows="3" maxlength="2000"></textarea></label></p>';
+  html += '<p><label>Фото (ссылка):<br><input type="text" id="msg-image"></label></p>';
+  html += '<p><label>Или файл:<br><input type="file" id="msg-image-file" accept="image/*"></label></p>';
+  html += '<p><label>Видео (до 15 сек, ссылка):<br><input type="text" id="msg-video"></label></p>';
+  html += '<p><label>Или файл видео:<br><input type="file" id="msg-video-file" accept="video/*"></label></p>';
+  html += '<p><button type="submit">Отправить</button></p>';
+  html += '</form>';
+  html += '<div id="msg-sendmsg"></div>';
+
+  el.innerHTML = html;
+
+  var mif = document.getElementById('msg-image-file');
+  var miu = document.getElementById('msg-image');
+  mif.addEventListener('change', function () {
+    var f = mif.files[0]; if (!f) return;
+    readImageFile(f, function (d) { miu.value = d; });
+  });
+
+  var mvf = document.getElementById('msg-video-file');
+  var mvu = document.getElementById('msg-video');
+  mvf.addEventListener('change', function () {
+    var f = mvf.files[0]; if (!f) return;
+    readVideoFile(f,
+      function (d) { mvu.value = d; },
+      function (err) { alert(err); mvf.value = ''; });
+  });
+
+  document.getElementById('form-msg').addEventListener('submit', function (ev) {
+    ev.preventDefault();
+    var text = (document.getElementById('msg-text').value || '').trim();
+    var image = (document.getElementById('msg-image').value || '').trim();
+    var video = (document.getElementById('msg-video').value || '').trim();
+    if (!text && !image && !video) return;
+
+    var ms = getMsgs();
+    ms.push({
+      id: uid(), from: me, to: partner,
+      text: text, image: image, video: video,
+      date: Date.now(), read: false
+    });
+    saveMsgs(ms);
+
+    addNotif(partner, me, 'message', me + ' отправил(а) вам сообщение', { from: me });
+
+    refreshCurrent();
+    updateNav();
+  });
+}
+
+/* =========================================================
+   СТАРТ
+   ========================================================= */
+document.addEventListener('DOMContentLoaded', function () {
+  updateNav();
+  showPage('home');
+});
+</script>
+<script src="sn-patch.js"></script>
+</body>
+</html>
